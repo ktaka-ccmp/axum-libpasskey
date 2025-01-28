@@ -1,6 +1,10 @@
 use askama::Template;
 // use askama_axum::IntoResponse;
-use axum::{http::StatusCode, response::Html, routing::{get, Router}};
+use axum::{
+    http::StatusCode,
+    response::Html,
+    routing::{get, Router},
+};
 use axum_core::response::IntoResponse;
 
 #[derive(Template)]
