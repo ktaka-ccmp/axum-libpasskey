@@ -1,9 +1,7 @@
 use askama::Template;
-use askama_axum::IntoResponse;
-use axum::{http::StatusCode, response::Html, routing::get, Router};
-
-mod passkey;
-use passkey::AppState;
+// use askama_axum::IntoResponse;
+use axum::{http::StatusCode, response::Html, routing::{get, Router}};
+use axum_core::response::IntoResponse;
 
 #[derive(Template)]
 #[template(path = "index.html")]
@@ -16,12 +14,12 @@ async fn index() -> impl IntoResponse {
 
 #[tokio::main]
 async fn main() {
-    let state = passkey::app_state();
+    let state = libpasskey::app_state();
 
     let app = Router::new()
         .route("/", get(index))
-        .nest("/register", passkey::register::router(state.clone()))
-        .nest("/auth", passkey::auth::router(state.clone()));
+        .nest("/register", libpasskey::register::router(state.clone()))
+        .nest("/auth", libpasskey::auth::router(state.clone()));
     // .with_state(state);
 
     println!("Starting server on http://localhost:3001");

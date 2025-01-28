@@ -1,9 +1,13 @@
 [package]
-name = "passkey-demo"
+name = "demo"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 askama = "0.12.1"
 askama_axum = "0.4.0"
-axum = "0.8.1"
+axum = { version = "0.8.1", features = ["http2", "macros", "multipart"] }
+tokio = { version = "1.43.0", features = ["full"] }
+
+libpasskey.workspace = true
+axum-core = "0.5.0"
