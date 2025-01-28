@@ -18,7 +18,7 @@ async fn index() -> impl IntoResponse {
 
 #[tokio::main]
 async fn main() {
-    let state = libpasskey::app_state();
+    let state = libpasskey::passkey::app_state();
 
     let app = Router::new()
         .route("/", get(index))
