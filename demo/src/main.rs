@@ -18,7 +18,7 @@ async fn index() -> impl IntoResponse {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let state = libpasskey::app_state().await?;
+    let state = libpasskey::passkey::app_state().await?;
 
     let app = Router::new()
         .route("/", get(index))
