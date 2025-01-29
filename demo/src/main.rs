@@ -18,11 +18,12 @@ async fn index() -> impl IntoResponse {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let state = libpasskey::passkey::app_state().await?;
+    let passkey_state = libpasskey::passkey::app_state().await?;
 
     let app = Router::new()
         .route("/", get(index))
-        .merge(routes::create_router(state));
+        .nest("/auth", routes::router_auth(passkey_state.clone()))
+        .nest("/register", routes::router_register(passkey_state.clone()));
 
     println!("Starting server on http://localhost:3001");
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3001").await?;
