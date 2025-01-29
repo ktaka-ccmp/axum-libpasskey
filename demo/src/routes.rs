@@ -8,12 +8,17 @@ use libpasskey::{
     AppState,
 };
 
-pub fn create_router(state: AppState) -> Router {
+pub fn router_register(state: AppState) -> Router {
     Router::new()
-        .route("/register/start", post(handle_start_registration))
-        .route("/register/finish", post(handle_finish_registration))
-        .route("/auth/start", post(handle_start_authentication))
-        .route("/auth/finish", post(handle_finish_authentication))
+        .route("/start", post(handle_start_registration))
+        .route("/finish", post(handle_finish_registration))
+        .with_state(state)
+}
+
+pub fn router_auth(state: AppState) -> Router {
+    Router::new()
+        .route("/start", post(handle_start_authentication))
+        .route("/finish", post(handle_finish_authentication))
         .with_state(state)
 }
 
