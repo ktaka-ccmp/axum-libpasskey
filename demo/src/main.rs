@@ -1,11 +1,11 @@
 use askama::Template;
-// use askama_axum::IntoResponse;
 use axum::{
     http::StatusCode,
     response::Html,
     routing::{get, Router},
 };
 use axum_core::response::IntoResponse;
+mod routes;
 
 #[derive(Template)]
 #[template(path = "index.html")]
@@ -17,16 +17,15 @@ async fn index() -> impl IntoResponse {
 }
 
 #[tokio::main]
-async fn main() {
-    let state = libpasskey::app_state();
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let state = libpasskey::passkey::app_state().await?;
 
     let app = Router::new()
         .route("/", get(index))
-        .nest("/register", libpasskey::register::router(state.clone()))
-        .nest("/auth", libpasskey::auth::router(state.clone()));
-    // .with_state(state);
+        .merge(routes::create_router(state));
 
     println!("Starting server on http://localhost:3001");
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3001").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3001").await?;
+    axum::serve(listener, app).await?;
+    Ok(())
 }

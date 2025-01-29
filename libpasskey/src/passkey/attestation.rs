@@ -1,12 +1,12 @@
-use axum::http::StatusCode;
 use ciborium::value::{Integer, Value as CborValue};
 use ring::{digest, signature::UnparsedPublicKey};
 use std::time::SystemTime;
 use webpki::EndEntityCert;
 use x509_parser::{certificate::X509Certificate, prelude::*, time::ASN1Time};
 
-// use crate::passkey::AttestationObject;
-use crate::passkey::{AppState, AttestationObject, AuthenticatorSelection};
+use crate::config::AuthenticatorSelection;
+use crate::errors::PasskeyError;
+use crate::passkey::{AppState, AttestationObject};
 
 // Constants for FIDO OIDs id-fido-gen-ce-aaguid
 const OID_FIDO_GEN_CE_AAGUID: &str = "1.3.6.1.4.1.45724.1.1.4";
@@ -19,7 +19,7 @@ pub(super) fn verify_attestation(
     attestation: &AttestationObject,
     client_data: &[u8],
     state: &AppState,
-) -> Result<(), (StatusCode, String)> {
+) -> Result<(), PasskeyError> {
     let client_data_hash = digest::digest(&digest::SHA256, client_data);
 
     match attestation.fmt.as_str() {
@@ -43,14 +43,10 @@ pub(super) fn verify_attestation(
                 &attestation.att_stmt,
             )
             .map_err(|e| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    format!("Attestation verification failed: {:?}", e),
-                )
+                PasskeyError::Verification(format!("Attestation verification failed: {:?}", e))
             })
         }
-        _ => Err((
-            StatusCode::BAD_REQUEST,
+        _ => Err(PasskeyError::Format(
             "Unsupported attestation format".to_string(),
         )),
     }
@@ -60,19 +56,18 @@ fn verify_none_attestation(
     attestation: &AttestationObject,
     authenticator_selection: &AuthenticatorSelection,
     rp_id: &str,
-) -> Result<(), (StatusCode, String)> {
+) -> Result<(), PasskeyError> {
     // Verify attStmt is empty
     if !attestation.att_stmt.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "attStmt must be empty for none attestation".into(),
+        return Err(PasskeyError::Format(
+            "attStmt must be empty for none attestation".to_string(),
         ));
     }
 
     // Verify RP ID hash
     let rp_id_hash = digest::digest(&digest::SHA256, rp_id.as_bytes());
     if attestation.auth_data[..32] != rp_id_hash.as_ref()[..] {
-        return Err((StatusCode::BAD_REQUEST, "Invalid RP ID hash".into()));
+        return Err(PasskeyError::Verification("Invalid RP ID hash".to_string()));
     }
 
     // Check flags
@@ -82,21 +77,21 @@ fn verify_none_attestation(
     let has_attested_cred_data = (flags & 0x40) != 0;
 
     if !user_present {
-        return Err((StatusCode::BAD_REQUEST, "User Present flag not set".into()));
+        return Err(PasskeyError::AuthenticatorData(
+            "User Present flag not set".to_string(),
+        ));
     }
 
     // Check UV flag if requested
     if authenticator_selection.user_verification == "required" && !user_verified {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "User Verification required but flag not set".into(),
+        return Err(PasskeyError::AuthenticatorData(
+            "User Verification required but flag not set".to_string(),
         ));
     }
 
     if !has_attested_cred_data {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "No attested credential data".into(),
+        return Err(PasskeyError::AuthenticatorData(
+            "No attested credential data".to_string(),
         ));
     }
 
@@ -113,14 +108,11 @@ fn verify_none_attestation(
 
     // Verify COSE key format
     let public_key_cbor: CborValue = ciborium::de::from_reader(&attestation.auth_data[pos..])
-        .map_err(|e| {
-            (
-                StatusCode::BAD_REQUEST,
-                format!("Invalid public key CBOR: {}", e),
-            )
-        })?;
+        .map_err(|e| PasskeyError::Format(format!("Invalid public key CBOR: {}", e)))?;
 
-    extract_public_key_coords(&public_key_cbor).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    extract_public_key_coords(&public_key_cbor).map_err(|e| {
+        PasskeyError::Verification(format!("Invalid public key coordinates: {}", e))
+    })?;
 
     Ok(())
 }
@@ -129,7 +121,7 @@ fn verify_packed_attestation(
     auth_data: &[u8],
     client_data_hash: &[u8],
     att_stmt: &Vec<(CborValue, CborValue)>,
-) -> Result<(), String> {
+) -> Result<(), PasskeyError> {
     // 1) Get the alg and sig from the existing helper
     let (alg, sig) = get_sig_from_stmt(att_stmt)?;
 
@@ -140,7 +132,10 @@ fn verify_packed_attestation(
 
     // 3) Make sure it's an ECDSA P-256 / SHA256 attestation
     if alg != ES256_ALG {
-        return Err(format!("Unsupported or unrecognized algorithm: {}", alg));
+        return Err(PasskeyError::Verification(format!(
+            "Unsupported or unrecognized algorithm: {}",
+            alg
+        )));
     }
 
     // 4) Extract x5c and verify its presence for packed attestation
@@ -175,12 +170,18 @@ fn verify_packed_attestation(
             println!("Full attestation with certificate chain");
 
             let attestn_cert_bytes = &x5c[0];
-            let attestn_cert = EndEntityCert::try_from(attestn_cert_bytes.as_ref())
-                .map_err(|e| format!("Failed to parse attestation certificate: {:?}", e))?;
+            let attestn_cert =
+                EndEntityCert::try_from(attestn_cert_bytes.as_ref()).map_err(|e| {
+                    PasskeyError::Verification(format!(
+                        "Failed to parse attestation certificate: {:?}",
+                        e
+                    ))
+                })?;
 
             // Parse with x509-parser for additional verifications
-            let (_, x509_cert) = X509Certificate::from_der(attestn_cert_bytes)
-                .map_err(|e| format!("Failed to parse X509 certificate: {}", e))?;
+            let (_, x509_cert) = X509Certificate::from_der(attestn_cert_bytes).map_err(|e| {
+                PasskeyError::Verification(format!("Failed to parse X509 certificate: {}", e))
+            })?;
 
             // Verify certificate attributes according to FIDO standard
             verify_packed_attestation_cert(&x509_cert, auth_data)?;
@@ -188,7 +189,9 @@ fn verify_packed_attestation(
             // Verify the signature
             attestn_cert
                 .verify_signature(&webpki::ECDSA_P256_SHA256, &signed_data, &sig)
-                .map_err(|_| "Attestation signature invalid".to_string())?;
+                .map_err(|_| {
+                    PasskeyError::Verification("Attestation signature invalid".to_string())
+                })?;
 
             // Verify certificate chain if intermediates are present
             if x5c.len() > 1 {
@@ -196,7 +199,9 @@ fn verify_packed_attestation(
             }
         }
         (None, Some(_)) => {
-            return Err("ECDAA attestation not supported".to_string());
+            return Err(PasskeyError::Verification(
+                "ECDAA attestation not supported".to_string(),
+            ));
         }
         (None, None) => {
             #[cfg(debug_assertions)]
@@ -204,14 +209,18 @@ fn verify_packed_attestation(
             verify_self_attestation(auth_data, &signed_data, &sig)?;
         }
         (Some(_), Some(_)) => {
-            return Err("Invalid attestation: both x5c and ecdaaKeyId present".to_string());
+            return Err(PasskeyError::Verification(
+                "Invalid attestation: both x5c and ecdaaKeyId present".to_string(),
+            ));
         }
     }
 
     Ok(())
 }
 
-fn get_sig_from_stmt(att_stmt: &Vec<(CborValue, CborValue)>) -> Result<(i64, Vec<u8>), String> {
+fn get_sig_from_stmt(
+    att_stmt: &Vec<(CborValue, CborValue)>,
+) -> Result<(i64, Vec<u8>), PasskeyError> {
     let mut alg = None;
     let mut sig = None;
 
@@ -235,11 +244,16 @@ fn get_sig_from_stmt(att_stmt: &Vec<(CborValue, CborValue)>) -> Result<(i64, Vec
 
     match (alg, sig) {
         (Some(a), Some(s)) => Ok((a, s)),
-        _ => Err("Missing algorithm or signature in attestation statement".to_string()),
+        _ => Err(PasskeyError::Verification(
+            "Missing algorithm or signature in attestation statement".to_string(),
+        )),
     }
 }
 
-fn verify_packed_attestation_cert(cert: &X509Certificate, auth_data: &[u8]) -> Result<(), String> {
+fn verify_packed_attestation_cert(
+    cert: &X509Certificate,
+    auth_data: &[u8],
+) -> Result<(), PasskeyError> {
     // Check that it's not a CA certificate
     if let Some(basic_constraints) = cert
         .extensions()
@@ -247,7 +261,9 @@ fn verify_packed_attestation_cert(cert: &X509Certificate, auth_data: &[u8]) -> R
         .find(|ext| ext.oid.as_bytes() == oid_registry::OID_X509_EXT_BASIC_CONSTRAINTS.as_bytes())
     {
         if basic_constraints.value.contains(&0x01) {
-            return Err("Certificate must not be a CA certificate".to_string());
+            return Err(PasskeyError::Verification(
+                "Certificate must not be a CA certificate".to_string(),
+            ));
         }
     }
 
@@ -267,32 +283,37 @@ fn verify_packed_attestation_cert(cert: &X509Certificate, auth_data: &[u8]) -> R
         // println!("auth_data_aaguid: {:?}, cert_aaguid: {:?}", auth_data_aaguid, &cert_aaguid[2..]);
 
         if auth_data_aaguid != &cert_aaguid[2..] {
-            return Err("AAGUID mismatch between certificate and authenticator data".to_string());
+            return Err(PasskeyError::Verification(
+                "AAGUID mismatch between certificate and authenticator data".to_string(),
+            ));
         }
     }
 
     Ok(())
 }
 
-fn verify_certificate_chain(x5c: &[Vec<u8>]) -> Result<(), String> {
+fn verify_certificate_chain(x5c: &[Vec<u8>]) -> Result<(), PasskeyError> {
     if x5c.is_empty() {
         return Ok(());
     }
 
     for cert_bytes in x5c {
-        let (_, cert) = X509Certificate::from_der(cert_bytes)
-            .map_err(|e| format!("Failed to parse certificate in chain: {}", e))?;
+        let (_, cert) = X509Certificate::from_der(cert_bytes).map_err(|e| {
+            PasskeyError::Verification(format!("Failed to parse certificate in chain: {}", e))
+        })?;
 
         // Convert SystemTime to ASN1Time
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
-            .map_err(|e| format!("System time error: {}", e))?;
+            .map_err(|e| PasskeyError::Verification(format!("System time error: {}", e)))?;
 
         let timestamp = ASN1Time::from_timestamp(now.as_secs() as i64)
-            .map_err(|e| format!("Failed to convert time: {}", e))?;
+            .map_err(|e| PasskeyError::Verification(format!("Failed to convert time: {}", e)))?;
 
         if !cert.validity().is_valid_at(timestamp) {
-            return Err("Certificate in chain is expired or not yet valid".to_string());
+            return Err(PasskeyError::Verification(
+                "Certificate in chain is expired or not yet valid".to_string(),
+            ));
         }
     }
 
@@ -303,12 +324,14 @@ fn verify_self_attestation(
     auth_data: &[u8],
     signed_data: &[u8],
     signature: &[u8],
-) -> Result<(), String> {
+) -> Result<(), PasskeyError> {
     let flags = auth_data[32];
     let has_attested_cred_data = (flags & 0x40) != 0;
 
     if !has_attested_cred_data {
-        return Err("No attested credential data in self attestation".to_string());
+        return Err(PasskeyError::Verification(
+            "No attested credential data in self attestation".to_string(),
+        ));
     }
 
     let mut pos = 37; // Skip RP ID hash (32) + flags (1) + counter (4)
@@ -317,8 +340,12 @@ fn verify_self_attestation(
     let cred_id_len = ((auth_data[pos] as usize) << 8) | (auth_data[pos + 1] as usize);
     pos += 2 + cred_id_len;
 
-    let public_key_cbor: CborValue = ciborium::de::from_reader(&auth_data[pos..])
-        .map_err(|e| format!("Invalid public key CBOR in self attestation: {}", e))?;
+    let public_key_cbor: CborValue = ciborium::de::from_reader(&auth_data[pos..]).map_err(|e| {
+        PasskeyError::Verification(format!(
+            "Invalid public key CBOR in self attestation: {}",
+            e
+        ))
+    })?;
 
     let (x_coord, y_coord) = extract_public_key_coords(&public_key_cbor)?;
 
@@ -330,14 +357,16 @@ fn verify_self_attestation(
     let verification_algorithm = &ring::signature::ECDSA_P256_SHA256_ASN1;
     let public_key = UnparsedPublicKey::new(verification_algorithm, &public_key);
 
-    public_key
-        .verify(signed_data, signature)
-        .map_err(|_| "Self attestation signature verification failed".to_string())?;
+    public_key.verify(signed_data, signature).map_err(|_| {
+        PasskeyError::Verification("Self attestation signature verification failed".to_string())
+    })?;
 
     Ok(())
 }
 
-fn extract_public_key_coords(public_key_cbor: &CborValue) -> Result<(Vec<u8>, Vec<u8>), String> {
+fn extract_public_key_coords(
+    public_key_cbor: &CborValue,
+) -> Result<(Vec<u8>, Vec<u8>), PasskeyError> {
     if let CborValue::Map(map) = public_key_cbor {
         let mut x_coord = None;
         let mut y_coord = None;
@@ -374,22 +403,28 @@ fn extract_public_key_coords(public_key_cbor: &CborValue) -> Result<(Vec<u8>, Ve
         let key_type_val = Integer::from(EC2_KEY_TYPE);
         let alg_val = Integer::from(ES256_ALG);
 
-        if key_type.map_or(true, |k| k != &key_type_val)
-            || algorithm.map_or(true, |a| a != &alg_val)
-        {
-            return Err("Invalid key type or algorithm".to_string());
+        if (key_type != Some(&key_type_val)) || (algorithm != Some(&alg_val)) {
+            return Err(PasskeyError::Verification(
+                "Invalid key type or algorithm".to_string(),
+            ));
         }
 
         match (x_coord, y_coord) {
             (Some(x), Some(y)) => {
                 if x.len() != COORD_LENGTH || y.len() != COORD_LENGTH {
-                    return Err("Invalid coordinate length".to_string());
+                    return Err(PasskeyError::Verification(
+                        "Invalid coordinate length".to_string(),
+                    ));
                 }
                 Ok((x, y))
             }
-            _ => Err("Missing public key coordinates".to_string()),
+            _ => Err(PasskeyError::Verification(
+                "Missing public key coordinates".to_string(),
+            )),
         }
     } else {
-        Err("Invalid public key format".to_string())
+        Err(PasskeyError::Verification(
+            "Invalid public key format".to_string(),
+        ))
     }
 }
