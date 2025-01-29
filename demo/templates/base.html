@@ -68,7 +68,7 @@
 
                 console.log('Authentication response:', authResponse);
 
-                const verifyResponse = await fetch('/auth/verify', {
+                const verifyResponse = await fetch('/auth/finish', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(authResponse)
