@@ -24,8 +24,14 @@ async fn index() -> impl IntoResponse {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let passkey_state = AppState::with_store_types(
-        ChallengeStoreType::Memory,  // Use memory for challenges (temporary data)
-        CredentialStoreType::Memory, // Use memory for credentials (for demo purposes)
+        // ChallengeStoreType::Memory, // Use memory for challenges (temporary data)
+        // CredentialStoreType::Memory, // Use memory for credentials (for demo purposes)
+        ChallengeStoreType::Sqlite {
+            path: "./data.db".to_string(),
+        },
+        CredentialStoreType::Sqlite {
+            path: "./data.db".to_string(),
+        },
     )
     .await?;
 
