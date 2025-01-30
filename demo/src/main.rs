@@ -26,11 +26,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let passkey_state = AppState::with_store_types(
         // ChallengeStoreType::Memory, // Use memory for challenges (temporary data)
         // CredentialStoreType::Memory, // Use memory for credentials (for demo purposes)
-        ChallengeStoreType::Sqlite {
-            path: "./data.db".to_string(),
+        // ChallengeStoreType::Sqlite {
+        //     path: "./db/sqlite/data/data.db".to_string(),
+        // },
+        // CredentialStoreType::Sqlite {
+        //     path: "./db/sqlite/data/data.db".to_string(),
+        // },
+        ChallengeStoreType::Postgres {
+            url: "postgresql://passkey:passkey@localhost:5432/passkey".to_string(),
         },
-        CredentialStoreType::Sqlite {
-            path: "./data.db".to_string(),
+        CredentialStoreType::Postgres {
+            url: "postgresql://passkey:passkey@localhost:5432/passkey".to_string(),
         },
     )
     .await?;
