@@ -1,5 +1,18 @@
 # Database
 
+## In memory HashMap
+
+### Specify database file in the code
+
+```rust
+    let passkey_state = AppState::with_store_types(
+        ChallengeStoreType::Memory,
+        CredentialStoreType::Memory,
+    )
+    .await?;
+```
+
+
 ## SQLite
 
 ### Prepare database file
@@ -23,8 +36,6 @@ watch -n 1 "echo 'select credential_id,counter,user_handle,user_name,user_displa
 
 ```rust
     let passkey_state = AppState::with_store_types(
-        // ChallengeStoreType::Memory, // Use memory for challenges (temporary data)
-        // CredentialStoreType::Memory, // Use memory for credentials (for demo purposes)
         ChallengeStoreType::Sqlite {
             path: "./db/sqlite/data/data.db".to_string(),
         },
