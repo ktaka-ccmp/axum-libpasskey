@@ -5,6 +5,11 @@ use axum::{
     routing::{get, Router},
 };
 use axum_core::response::IntoResponse;
+use libpasskey::{
+    storage::{ChallengeStoreType, CredentialStoreType},
+    AppState,
+};
+
 mod routes;
 
 #[derive(Template)]
@@ -18,7 +23,11 @@ async fn index() -> impl IntoResponse {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let passkey_state = libpasskey::passkey::app_state().await?;
+    let passkey_state = AppState::with_store_types(
+        ChallengeStoreType::Memory,  // Use memory for challenges (temporary data)
+        CredentialStoreType::Memory, // Use memory for credentials (for demo purposes)
+    )
+    .await?;
 
     let app = Router::new()
         .route("/", get(index))
