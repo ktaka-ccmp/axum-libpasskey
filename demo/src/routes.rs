@@ -1,10 +1,19 @@
-use axum::http::StatusCode;
-use axum::{extract::State, routing::post, Json, Router};
+use axum::{
+    extract::{Json, State},
+    http::StatusCode,
+    routing::post,
+    Router,
+};
 use libpasskey::{
-    auth::{
-        start_authentication, verify_authentication, AuthenticationOptions, AuthenticatorResponse,
+    passkey::{
+        auth::{
+            start_authentication, verify_authentication, AuthenticationOptions,
+            AuthenticatorResponse,
+        },
+        register::{
+            finish_registration, start_registration, RegisterCredential, RegistrationOptions,
+        },
     },
-    register::{finish_registration, start_registration, RegisterCredential, RegistrationOptions},
     AppState,
 };
 
@@ -26,20 +35,28 @@ async fn handle_start_registration(
     State(state): State<AppState>,
     Json(username): Json<String>,
 ) -> Json<RegistrationOptions> {
-    Json(start_registration(&state, username).await)
+    Json(
+        start_registration(&state, username)
+            .await
+            .expect("Failed to start registration"),
+    )
 }
 
 async fn handle_finish_registration(
     State(state): State<AppState>,
     Json(reg_data): Json<RegisterCredential>,
-) -> Result<&'static str, (StatusCode, String)> {
+) -> Result<String, (StatusCode, String)> {
     finish_registration(&state, reg_data)
         .await
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))
 }
 
 async fn handle_start_authentication(State(state): State<AppState>) -> Json<AuthenticationOptions> {
-    Json(start_authentication(&state).await)
+    Json(
+        start_authentication(&state)
+            .await
+            .expect("Failed to start authentication"),
+    )
 }
 
 async fn handle_finish_authentication(

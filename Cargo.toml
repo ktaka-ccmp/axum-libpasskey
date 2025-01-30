@@ -11,5 +11,5 @@ edition = "2021"
 
 [workspace.dependencies]
 libpasskey = { path = "./libpasskey" }
-axum = { version = "0.8.1", features = ["http2", "macros", "multipart"] }
-tokio = { version = "1.42.0", features = ["bytes", "fs", "io-std", "macros", "net", "parking_lot", "rt-multi-thread", "signal", "sync", "time", "tracing"] }
+axum = { version = "0.8", features = ["http2", "macros", "multipart"] }
+tokio = { version = "1.42", features = ["bytes", "fs", "io-std", "macros", "net", "parking_lot", "rt-multi-thread", "signal", "sync", "time", "tracing"] }
