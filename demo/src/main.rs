@@ -5,10 +5,7 @@ use axum::{
     routing::{get, Router},
 };
 use axum_core::response::IntoResponse;
-use libpasskey::{
-    storage::{ChallengeStoreType, CredentialStoreType},
-    AppState,
-};
+use libpasskey::AppState;
 
 mod routes;
 
@@ -23,29 +20,7 @@ async fn index() -> impl IntoResponse {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let passkey_state = AppState::with_store_types(
-        // ChallengeStoreType::Memory,
-        // CredentialStoreType::Memory,
-        // ChallengeStoreType::Sqlite {
-        //     url: "sqlite:./db/sqlite/data/data.db".to_string(),
-        // },
-        // CredentialStoreType::Sqlite {
-        //     url: "sqlite:./db/sqlite/data/data.db".to_string(),
-        // },
-        // ChallengeStoreType::Postgres {
-        //     url: "postgresql://passkey:passkey@localhost:5432/passkey".to_string(),
-        // },
-        // CredentialStoreType::Postgres {
-        //     url: "postgresql://passkey:passkey@localhost:5432/passkey".to_string(),
-        // },
-        ChallengeStoreType::Redis {
-            url: "redis://localhost:6379".to_string(),
-        },
-        CredentialStoreType::Redis {
-            url: "redis://localhost:6379".to_string(),
-        },
-    )
-    .await?;
+    let passkey_state = AppState::new().await?;
 
     let app = Router::new()
         .route("/", get(index))
