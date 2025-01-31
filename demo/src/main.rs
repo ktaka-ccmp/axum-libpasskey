@@ -27,16 +27,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // ChallengeStoreType::Memory,
         // CredentialStoreType::Memory,
         // ChallengeStoreType::Sqlite {
-        //     path: "./db/sqlite/data/data.db".to_string(),
+        //     url: "sqlite:./db/sqlite/data/data.db".to_string(),
         // },
         // CredentialStoreType::Sqlite {
-        //     path: "./db/sqlite/data/data.db".to_string(),
+        //     url: "sqlite:./db/sqlite/data/data.db".to_string(),
         // },
-        ChallengeStoreType::Postgres {
-            url: "postgresql://passkey:passkey@localhost:5432/passkey".to_string(),
+        // ChallengeStoreType::Postgres {
+        //     url: "postgresql://passkey:passkey@localhost:5432/passkey".to_string(),
+        // },
+        // CredentialStoreType::Postgres {
+        //     url: "postgresql://passkey:passkey@localhost:5432/passkey".to_string(),
+        // },
+        ChallengeStoreType::Redis {
+            url: "redis://localhost:6379".to_string(),
         },
-        CredentialStoreType::Postgres {
-            url: "postgresql://passkey:passkey@localhost:5432/passkey".to_string(),
+        CredentialStoreType::Redis {
+            url: "redis://localhost:6379".to_string(),
         },
     )
     .await?;
