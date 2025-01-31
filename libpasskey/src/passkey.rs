@@ -70,18 +70,11 @@ pub struct AppState {
 
 impl AppState {
     pub async fn new() -> Result<Self, PasskeyError> {
-        Self::with_store_types(ChallengeStoreType::Memory, CredentialStoreType::Memory).await
-    }
-
-    pub async fn with_store_types(
-        challenge_store_type: ChallengeStoreType,
-        credential_store_type: CredentialStoreType,
-    ) -> Result<Self, PasskeyError> {
         let config = Config::from_env()?;
         config.validate()?;
 
-        let challenge_store = challenge_store_type.create_store().await?;
-        let credential_store = credential_store_type.create_store().await?;
+        let challenge_store = ChallengeStoreType::from_env()?.create_store().await?;
+        let credential_store = CredentialStoreType::from_env()?.create_store().await?;
 
         // Initialize the stores
         challenge_store.init().await?;

@@ -1,49 +1,125 @@
 use crate::errors::PasskeyError;
 use crate::passkey::{StoredChallenge, StoredCredential};
 use async_trait::async_trait;
+use std::env;
 
 mod memory;
 mod postgres;
+mod redis;
 mod sqlite;
 
 #[derive(Clone, Debug)]
 pub enum ChallengeStoreType {
     Memory,
-    Sqlite { path: String },
+    Sqlite { url: String },
     Postgres { url: String },
+    Redis { url: String },
 }
 
 #[derive(Clone, Debug)]
 pub enum CredentialStoreType {
     Memory,
-    Sqlite { path: String },
+    Sqlite { url: String },
     Postgres { url: String },
+    Redis { url: String },
 }
 
 impl ChallengeStoreType {
+    pub fn from_env() -> Result<Self, PasskeyError> {
+        dotenv::dotenv().ok();
+
+        let store_type = env::var("PASSKEY_CHALLENGE_STORE")
+            .unwrap_or_else(|_| "memory".to_string())
+            .to_lowercase();
+
+        match store_type.as_str() {
+            "memory" => Ok(ChallengeStoreType::Memory),
+            "sqlite" => {
+                let url = env::var("PASSKEY_CHALLENGE_SQLITE_URL")
+                    .unwrap_or_else(|_| "PASSKEY_CHALLENGE_SQLITE_URL not set".to_string());
+                Ok(ChallengeStoreType::Sqlite { url })
+            }
+            "postgres" => {
+                let url = env::var("PASSKEY_CHALLENGE_POSTGRES_URL").map_err(|_| {
+                    PasskeyError::Storage("PASSKEY_CHALLENGE_POSTGRES_URL not set".to_string())
+                })?;
+                Ok(ChallengeStoreType::Postgres { url })
+            }
+            "redis" => {
+                let url = env::var("PASSKEY_CHALLENGE_REDIS_URL").map_err(|_| {
+                    PasskeyError::Storage("PASSKEY_CHALLENGE_REDIS_URL not set".to_string())
+                })?;
+                Ok(ChallengeStoreType::Redis { url })
+            }
+            _ => Err(PasskeyError::Storage(format!(
+                "Unknown challenge store type: {}",
+                store_type
+            ))),
+        }
+    }
+
     pub(crate) async fn create_store(&self) -> Result<Box<dyn ChallengeStore>, PasskeyError> {
         match self {
-            ChallengeStoreType::Memory => Ok(Box::new(memory::InMemoryChallengeStore::default())),
-            ChallengeStoreType::Sqlite { path } => {
-                Ok(Box::new(sqlite::SqliteChallengeStore::connect(path).await?))
+            ChallengeStoreType::Memory => Ok(Box::new(memory::InMemoryChallengeStore::new())),
+            ChallengeStoreType::Sqlite { url } => {
+                Ok(Box::new(sqlite::SqliteChallengeStore::connect(url).await?))
             }
             ChallengeStoreType::Postgres { url } => Ok(Box::new(
                 postgres::PostgresChallengeStore::connect(url).await?,
             )),
+            ChallengeStoreType::Redis { url } => {
+                Ok(Box::new(redis::RedisChallengeStore::connect(url).await?))
+            }
         }
     }
 }
 
 impl CredentialStoreType {
+    pub fn from_env() -> Result<Self, PasskeyError> {
+        dotenv::dotenv().ok();
+
+        let store_type = env::var("PASSKEY_CREDENTIAL_STORE")
+            .unwrap_or_else(|_| "memory".to_string())
+            .to_lowercase();
+
+        match store_type.as_str() {
+            "memory" => Ok(CredentialStoreType::Memory),
+            "sqlite" => {
+                let url = env::var("PASSKEY_CREDENTIAL_SQLITE_URL")
+                    .unwrap_or_else(|_| "PASSKEY_CREDENTIAL_SQLITE_URL not set".to_string());
+                Ok(CredentialStoreType::Sqlite { url })
+            }
+            "postgres" => {
+                let url = env::var("PASSKEY_CREDENTIAL_POSTGRES_URL").map_err(|_| {
+                    PasskeyError::Storage("PASSKEY_CREDENTIAL_POSTGRES_URL not set".to_string())
+                })?;
+                Ok(CredentialStoreType::Postgres { url })
+            }
+            "redis" => {
+                let url = env::var("PASSKEY_CREDENTIAL_REDIS_URL").map_err(|_| {
+                    PasskeyError::Storage("PASSKEY_CREDENTIAL_REDIS_URL not set".to_string())
+                })?;
+                Ok(CredentialStoreType::Redis { url })
+            }
+            _ => Err(PasskeyError::Storage(format!(
+                "Unknown credential store type: {}",
+                store_type
+            ))),
+        }
+    }
+
     pub(crate) async fn create_store(&self) -> Result<Box<dyn CredentialStore>, PasskeyError> {
         match self {
-            CredentialStoreType::Memory => Ok(Box::new(memory::InMemoryCredentialStore::default())),
-            CredentialStoreType::Sqlite { path } => Ok(Box::new(
-                sqlite::SqliteCredentialStore::connect(path).await?,
-            )),
+            CredentialStoreType::Memory => Ok(Box::new(memory::InMemoryCredentialStore::new())),
+            CredentialStoreType::Sqlite { url } => {
+                Ok(Box::new(sqlite::SqliteCredentialStore::connect(url).await?))
+            }
             CredentialStoreType::Postgres { url } => Ok(Box::new(
                 postgres::PostgresCredentialStore::connect(url).await?,
             )),
+            CredentialStoreType::Redis { url } => {
+                Ok(Box::new(redis::RedisCredentialStore::connect(url).await?))
+            }
         }
     }
 }
