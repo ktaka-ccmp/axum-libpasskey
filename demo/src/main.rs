@@ -5,7 +5,6 @@ use axum::{
     routing::{get, Router},
 };
 use axum_core::response::IntoResponse;
-use libpasskey::AppState;
 
 mod routes;
 
@@ -20,7 +19,7 @@ async fn index() -> impl IntoResponse {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let passkey_state = AppState::new().await?;
+    let passkey_state = libpasskey::AppState::new().await?;
 
     let app = Router::new()
         .route("/", get(index))
