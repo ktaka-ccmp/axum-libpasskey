@@ -6,6 +6,7 @@
     <script>
         // Base64 utility functions
         function arrayBufferToBase64URL(buffer) {
+            if (!buffer) return null;
             const bytes = new Uint8Array(buffer);
             let str = '';
             for (const byte of bytes) {
@@ -15,6 +16,7 @@
         }
 
         function base64URLToUint8Array(base64URL) {
+            if (!base64URL) return null;
             const padding = '='.repeat((4 - base64URL.length % 4) % 4);
             const base64 = base64URL.replace(/-/g, '+').replace(/_/g, '/') + padding;
             const rawData = atob(base64);
@@ -26,25 +28,46 @@
         }
 
         // Authentication functions
-        async function startAuthentication() {
+        async function startAuthentication(withUsername = false) {
             const authStatus = document.getElementById("auth-status");
             const authActions = document.getElementById("auth-actions");
 
             try {
+                let username = null;
+                if (withUsername) {
+                    const usernameInput = document.getElementById("username-input");
+                    username = usernameInput.value.trim();
+                    if (!username) {
+                        alert("Please enter a username");
+                        return;
+                    }
+                }
+
                 const startResponse = await fetch('/auth/start', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
+                    headers: { 'Content-Type': 'application/json' },
+                    body: username ? JSON.stringify(username) : "{}"
                 });
 
                 const options = await startResponse.json();
-                console.log('Authentication options:', options);
+                console.log('Raw Authentication options:', options);
 
                 // Convert base64url strings
                 options.challenge = base64URLToUint8Array(options.challenge);
-                options.allowCredentials = options.allowCredentials.map(credential => ({
-                    ...credential,
-                    id: base64URLToUint8Array(credential.id)
-                }));
+                if (options.allowCredentials && Array.isArray(options.allowCredentials)) {
+                    console.log('Raw credentials:', options.allowCredentials);
+                    options.allowCredentials = options.allowCredentials.map(credential => ({
+                        type: 'public-key',  // Required by WebAuthn
+                        id: new Uint8Array(credential.id),
+                        transports: credential.transports  // Optional
+                    }));
+                    console.log('Processed credentials:', options.allowCredentials);
+                } else {
+                    options.allowCredentials = [];
+                }
+                console.log('Processed Authentication options:', options);
+
+                // options.rpId = "amazon.co.jp"
 
                 const credential = await navigator.credentials.get({
                     publicKey: options
@@ -153,7 +176,6 @@
             }
         }
     </script>
-    {% block head %}{% endblock %}
 </head>
 <body>
     <div class="container">
