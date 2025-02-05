@@ -47,7 +47,7 @@ impl super::ChallengeStore for RedisChallengeStore {
             serde_json::to_string(&challenge).map_err(|e| PasskeyError::Storage(e.to_string()))?;
 
         let _: () = conn
-            .set_ex(&key, value, challenge.timestamp)
+            .set_ex(&key, value, challenge.ttl)
             .await
             .map_err(|e| PasskeyError::Storage(e.to_string()))?;
         Ok(())
@@ -201,6 +201,17 @@ impl super::CredentialStore for RedisCredentialStore {
             .map_err(|e| PasskeyError::Storage(e.to_string()))?;
 
         Ok(())
+    }
+
+    async fn get_credentials_by_username(
+        &self,
+        username: &str,
+    ) -> Result<Vec<StoredCredential>, PasskeyError> {
+        let all_credentials = self.get_all_credentials().await?;
+        Ok(all_credentials
+            .into_iter()
+            .filter(|credential| credential.user.name == username)
+            .collect())
     }
 
     async fn get_all_credentials(&self) -> Result<Vec<StoredCredential>, PasskeyError> {

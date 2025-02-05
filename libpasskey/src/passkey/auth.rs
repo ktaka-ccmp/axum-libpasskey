@@ -1,6 +1,7 @@
 use base64::engine::{general_purpose::URL_SAFE, Engine};
 use ring::{digest, signature::UnparsedPublicKey};
 use serde::{Deserialize, Serialize};
+use std::time::SystemTime;
 use uuid::Uuid;
 
 use crate::errors::PasskeyError;
@@ -21,7 +22,7 @@ pub struct AuthenticationOptions {
 #[derive(Serialize, Debug)]
 struct AllowCredential {
     type_: String,
-    id: String,
+    id: Vec<u8>,
 }
 
 #[allow(unused)]
@@ -42,7 +43,30 @@ struct AuthenticatorAssertionResponse {
     user_handle: Option<String>,
 }
 
-pub async fn start_authentication(state: &AppState) -> Result<AuthenticationOptions, PasskeyError> {
+pub async fn start_authentication(
+    state: &AppState,
+    username: Option<String>,
+) -> Result<AuthenticationOptions, PasskeyError> {
+    let mut allow_credentials = Vec::new();
+    match username {
+        Some(username) => {
+            let credential_store = state.credential_store.lock().await;
+            let credentials = credential_store
+                .get_credentials_by_username(&username)
+                .await?;
+
+            for credential in credentials {
+                allow_credentials.push(AllowCredential {
+                    type_: "public-key".to_string(),
+                    id: credential.credential_id,
+                });
+            }
+        }
+        None => {
+            // allow_credentials = vec![];
+        }
+    }
+
     let challenge = generate_challenge();
     let auth_id = Uuid::new_v4().to_string();
 
@@ -57,6 +81,7 @@ pub async fn start_authentication(state: &AppState) -> Result<AuthenticationOpti
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs(),
+        ttl: state.config.challenge_timeout_seconds,
     };
 
     let mut challenge_store = state.challenge_store.lock().await;
@@ -66,9 +91,9 @@ pub async fn start_authentication(state: &AppState) -> Result<AuthenticationOpti
 
     let auth_option = AuthenticationOptions {
         challenge: URL_SAFE.encode(challenge.unwrap_or_default()),
-        timeout: 60000,
+        timeout: state.config.timeout * 1000, // Convert seconds to milliseconds
         rp_id: state.config.rp_id.clone(),
-        allow_credentials: vec![], // Empty for resident keys
+        allow_credentials,
         user_verification: state
             .config
             .authenticator_selection
@@ -101,6 +126,23 @@ pub async fn verify_authentication(
         .get_challenge(&auth_response.auth_id)
         .await?
         .ok_or(PasskeyError::Storage("Challenge not found".into()))?;
+
+    // Validate challenge TTL
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let age = now - stored_challenge.timestamp;
+    let timeout = stored_challenge
+        .ttl
+        .min(state.config.challenge_timeout_seconds);
+    if age > timeout {
+        println!(
+            "Challenge expired after {} seconds (timeout: {})",
+            age, timeout
+        );
+        return Err(PasskeyError::Authentication("Challenge has expired".into()));
+    }
 
     #[cfg(debug_assertions)]
     println!("Found stored challenge: {:?}", stored_challenge);

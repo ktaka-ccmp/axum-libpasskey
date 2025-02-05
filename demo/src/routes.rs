@@ -51,9 +51,17 @@ async fn handle_finish_registration(
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))
 }
 
-async fn handle_start_authentication(State(state): State<AppState>) -> Json<AuthenticationOptions> {
+async fn handle_start_authentication(
+    State(state): State<AppState>,
+    username: Result<Json<String>, axum::extract::rejection::JsonRejection>,
+) -> Json<AuthenticationOptions> {
+    let username = match username {
+        Ok(Json(username)) => Some(username),
+        Err(_) => None,
+    };
+
     Json(
-        start_authentication(&state)
+        start_authentication(&state, username)
             .await
             .expect("Failed to start authentication"),
     )

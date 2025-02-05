@@ -25,7 +25,8 @@ impl PostgresChallengeStore {
                 challenge BYTEA NOT NULL,
                 user_name TEXT NOT NULL,
                 user_display_name TEXT NOT NULL,
-                timestamp BIGINT NOT NULL
+                timestamp BIGINT NOT NULL,
+                ttl BIGINT NOT NULL
             )
             "#,
         )
@@ -47,7 +48,8 @@ impl super::ChallengeStore for PostgresChallengeStore {
                 challenge BYTEA NOT NULL,
                 user_name TEXT NOT NULL,
                 user_display_name TEXT NOT NULL,
-                timestamp BIGINT NOT NULL
+                timestamp BIGINT NOT NULL,
+                ttl BIGINT NOT NULL
             )
             "#,
         )
@@ -70,13 +72,15 @@ impl super::ChallengeStore for PostgresChallengeStore {
                 challenge,
                 user_name,
                 user_display_name,
-                timestamp
-            ) VALUES ($1, $2, $3, $4, $5)
+                timestamp,
+                ttl
+            ) VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT (challenge_id) DO UPDATE SET
                 challenge = $2,
                 user_name = $3,
                 user_display_name = $4,
-                timestamp = $5
+                timestamp = $5,
+                ttl = $6
             "#,
         )
         .bind(&challenge_id)
@@ -97,7 +101,7 @@ impl super::ChallengeStore for PostgresChallengeStore {
     ) -> Result<Option<StoredChallenge>, PasskeyError> {
         let row = sqlx::query(
             r#"
-            SELECT challenge, user_name, user_display_name, timestamp
+            SELECT challenge, user_name, user_display_name, timestamp, ttl
             FROM challenges
             WHERE challenge_id = $1
             "#,
@@ -117,6 +121,7 @@ impl super::ChallengeStore for PostgresChallengeStore {
                 challenge: r.get("challenge"),
                 user: user_info,
                 timestamp: r.get::<i64, _>("timestamp") as u64,
+                ttl: r.get::<i64, _>("ttl") as u64,
             }
         });
 
@@ -291,6 +296,42 @@ impl super::CredentialStore for PostgresCredentialStore {
         .map_err(|e| PasskeyError::Storage(e.to_string()))?;
 
         Ok(())
+    }
+
+    async fn get_credentials_by_username(
+        &self,
+        username: &str,
+    ) -> Result<Vec<StoredCredential>, PasskeyError> {
+        let rows = sqlx::query(
+            r#"
+            SELECT credential_id, credential, public_key, counter, user_handle, user_name, user_display_name
+            FROM credentials
+            WHERE user_name = $1
+            "#,
+        )
+        .bind(username)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| PasskeyError::Storage(e.to_string()))?;
+
+        let credentials = rows
+            .into_iter()
+            .map(|r| {
+                let user_info = PublicKeyCredentialUserEntity {
+                    id: r.get("user_handle"),
+                    name: r.get("user_name"),
+                    display_name: r.get("user_display_name"),
+                };
+                StoredCredential {
+                    credential_id: r.get("credential"),
+                    public_key: r.get("public_key"),
+                    counter: r.get::<i32, _>("counter") as u32,
+                    user: user_info,
+                }
+            })
+            .collect();
+
+        Ok(credentials)
     }
 
     async fn get_all_credentials(&self) -> Result<Vec<StoredCredential>, PasskeyError> {
