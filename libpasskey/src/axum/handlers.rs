@@ -1,37 +1,33 @@
+use askama::Template;
 use axum::{
     extract::{Json, State},
     http::StatusCode,
-    routing::post,
-    Router,
+    response::Html,
 };
-use libpasskey::{
-    passkey::{
-        auth::{
-            start_authentication, verify_authentication, AuthenticationOptions,
-            AuthenticatorResponse,
-        },
-        register::{
-            finish_registration, start_registration, RegisterCredential, RegistrationOptions,
-        },
-    },
-    AppState,
+use axum_core::response::IntoResponse;
+
+use crate::passkey::{
+    finish_registration, start_authentication, start_registration, verify_authentication,
+    AuthenticationOptions, AuthenticatorResponse, RegisterCredential, RegistrationOptions,
 };
 
-pub fn router_register(state: AppState) -> Router {
-    Router::new()
-        .route("/start", post(handle_start_registration))
-        .route("/finish", post(handle_finish_registration))
-        .with_state(state)
+use crate::config::PASSKEY_ROUTE_PREFIX;
+use crate::types::AppState;
+
+#[derive(Template)]
+#[template(path = "index.html")]
+struct IndexTemplate {
+    passkey_route_prefix: &'static str,
 }
 
-pub fn router_auth(state: AppState) -> Router {
-    Router::new()
-        .route("/start", post(handle_start_authentication))
-        .route("/finish", post(handle_finish_authentication))
-        .with_state(state)
+pub(crate) async fn index() -> impl IntoResponse {
+    let template = IndexTemplate {
+        passkey_route_prefix: PASSKEY_ROUTE_PREFIX.as_str(),
+    };
+    (StatusCode::OK, Html(template.render().unwrap())).into_response()
 }
 
-async fn handle_start_registration(
+pub(crate) async fn handle_start_registration(
     State(state): State<AppState>,
     Json(username): Json<String>,
 ) -> Json<RegistrationOptions> {
@@ -42,7 +38,7 @@ async fn handle_start_registration(
     )
 }
 
-async fn handle_finish_registration(
+pub(crate) async fn handle_finish_registration(
     State(state): State<AppState>,
     Json(reg_data): Json<RegisterCredential>,
 ) -> Result<String, (StatusCode, String)> {
@@ -51,7 +47,7 @@ async fn handle_finish_registration(
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))
 }
 
-async fn handle_start_authentication(
+pub(crate) async fn handle_start_authentication(
     State(state): State<AppState>,
     username: Result<Json<String>, axum::extract::rejection::JsonRejection>,
 ) -> Json<AuthenticationOptions> {
@@ -67,7 +63,7 @@ async fn handle_start_authentication(
     )
 }
 
-async fn handle_finish_authentication(
+pub(crate) async fn handle_finish_authentication(
     State(state): State<AppState>,
     Json(auth_response): Json<AuthenticatorResponse>,
 ) -> Result<String, (StatusCode, String)> {

@@ -4,9 +4,9 @@ use std::time::SystemTime;
 use webpki::EndEntityCert;
 use x509_parser::{certificate::X509Certificate, prelude::*, time::ASN1Time};
 
-use crate::config::AuthenticatorSelection;
+use super::types::{AttestationObject, AuthenticatorSelection};
 use crate::errors::PasskeyError;
-use crate::passkey::{AppState, AttestationObject};
+use crate::types::AppState;
 
 // Constants for FIDO OIDs id-fido-gen-ce-aaguid
 const OID_FIDO_GEN_CE_AAGUID: &str = "1.3.6.1.4.1.45724.1.1.4";

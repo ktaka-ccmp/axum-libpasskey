@@ -1,12 +1,11 @@
-use crate::errors::PasskeyError;
-use crate::passkey::{StoredChallenge, StoredCredential};
-use crate::storage::{ChallengeStore, CredentialStore};
 use async_trait::async_trait;
 use std::collections::HashMap;
 
-pub(crate) struct InMemoryChallengeStore {
-    challenges: HashMap<String, StoredChallenge>,
-}
+use super::traits::{ChallengeStore, CredentialStore};
+use super::types::{InMemoryChallengeStore, InMemoryCredentialStore};
+
+use crate::errors::PasskeyError;
+use crate::types::{StoredChallenge, StoredCredential};
 
 impl InMemoryChallengeStore {
     pub(crate) fn new() -> Self {
@@ -15,10 +14,6 @@ impl InMemoryChallengeStore {
             challenges: HashMap::new(),
         }
     }
-}
-
-pub(crate) struct InMemoryCredentialStore {
-    credentials: HashMap<String, StoredCredential>,
 }
 
 impl InMemoryCredentialStore {

@@ -1,28 +1,15 @@
 use crate::errors::PasskeyError;
-use crate::passkey::{StoredChallenge, StoredCredential};
+use crate::types::{StoredChallenge, StoredCredential};
 use async_trait::async_trait;
 use std::env;
 
-mod memory;
-mod postgres;
-mod redis;
-mod sqlite;
+use crate::storage::types::{
+    InMemoryChallengeStore, InMemoryCredentialStore, PostgresChallengeStore,
+    PostgresCredentialStore, RedisChallengeStore, RedisCredentialStore, SqliteChallengeStore,
+    SqliteCredentialStore,
+};
 
-#[derive(Clone, Debug)]
-pub enum ChallengeStoreType {
-    Memory,
-    Sqlite { url: String },
-    Postgres { url: String },
-    Redis { url: String },
-}
-
-#[derive(Clone, Debug)]
-pub enum CredentialStoreType {
-    Memory,
-    Sqlite { url: String },
-    Postgres { url: String },
-    Redis { url: String },
-}
+use super::types::{ChallengeStoreType, CredentialStoreType};
 
 impl ChallengeStoreType {
     pub fn from_env() -> Result<Self, PasskeyError> {
@@ -60,15 +47,15 @@ impl ChallengeStoreType {
 
     pub(crate) async fn create_store(&self) -> Result<Box<dyn ChallengeStore>, PasskeyError> {
         match self {
-            ChallengeStoreType::Memory => Ok(Box::new(memory::InMemoryChallengeStore::new())),
+            ChallengeStoreType::Memory => Ok(Box::new(InMemoryChallengeStore::new())),
             ChallengeStoreType::Sqlite { url } => {
-                Ok(Box::new(sqlite::SqliteChallengeStore::connect(url).await?))
+                Ok(Box::new(SqliteChallengeStore::connect(url).await?))
             }
-            ChallengeStoreType::Postgres { url } => Ok(Box::new(
-                postgres::PostgresChallengeStore::connect(url).await?,
-            )),
+            ChallengeStoreType::Postgres { url } => {
+                Ok(Box::new(PostgresChallengeStore::connect(url).await?))
+            }
             ChallengeStoreType::Redis { url } => {
-                Ok(Box::new(redis::RedisChallengeStore::connect(url).await?))
+                Ok(Box::new(RedisChallengeStore::connect(url).await?))
             }
         }
     }
@@ -110,15 +97,15 @@ impl CredentialStoreType {
 
     pub(crate) async fn create_store(&self) -> Result<Box<dyn CredentialStore>, PasskeyError> {
         match self {
-            CredentialStoreType::Memory => Ok(Box::new(memory::InMemoryCredentialStore::new())),
+            CredentialStoreType::Memory => Ok(Box::new(InMemoryCredentialStore::new())),
             CredentialStoreType::Sqlite { url } => {
-                Ok(Box::new(sqlite::SqliteCredentialStore::connect(url).await?))
+                Ok(Box::new(SqliteCredentialStore::connect(url).await?))
             }
-            CredentialStoreType::Postgres { url } => Ok(Box::new(
-                postgres::PostgresCredentialStore::connect(url).await?,
-            )),
+            CredentialStoreType::Postgres { url } => {
+                Ok(Box::new(PostgresCredentialStore::connect(url).await?))
+            }
             CredentialStoreType::Redis { url } => {
-                Ok(Box::new(redis::RedisCredentialStore::connect(url).await?))
+                Ok(Box::new(RedisCredentialStore::connect(url).await?))
             }
         }
     }
